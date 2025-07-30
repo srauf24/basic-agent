@@ -1,0 +1,58 @@
+Observability tool
+https://github.com/langfuse/langfuse
+
+
+# Why inheriting from typed dict is a best practice:
+#* Clarity and Readability: It explicitly defines the "shape" of the state object. Anyone reading the code can immediately see what pieces of information (like subject, recipients, body, etc.) are part of the email state.
+# * Type Safety: It prevents runtime errors. A static type checker will catch typos in key names or if you try to assign the wrong type of data to a state variable (e.g., assigning a single string to a list of recipients).
+# * Consistency: It ensures that different parts of your agent (different functions or "nodes" in a graph) all create and use the state object in the same way.
+
+#Human Message Function
+#In that context, HumanMessage is a class that wraps a user's text input to explicitly label it as a message originating from a human.
+# Purpose: Large language models (LLMs), especially those designed for chat, process conversations as a sequence of messages. They need to know who said what to maintain context and generate appropriate responses. The primary roles are typically "human," "ai," and "system."
+ #messages = [...]`: The model expects a list of messages, because a conversation usually has multiple turns. Even for the very first message, you pass it as a list containing that single HumanMessage.
+
+#Graph Structure
+# Nodes represent individual processing steps (like calling an LLM, using a tool, or making a decision).
+# Edges define the possible transitions between steps.
+# State is user defined and maintained and passed between nodes during execution. When deciding which node to target next, this is the current state that we look at.
+
+#Langraph Notes https://blog.langchain.com/langgraph/
+
+StateGraph is a class that represents the graph.
+#You initialize this class by passing in a state definition.  This state definition represents a central state object that is updated over time.
+This state is updated by nodes in the graph, which return operations to attributes of this state (in the form of a key-value store).
+The attributes of this state can be updated in two ways. First, an attribute could be overridden completely. This is useful if you want to nodes to return the new value of an attribute. Second, an attribute could be updated by adding to its value. This is useful if an attribute is a list of actions taken (or something similar) and you want nodes to return new actions taken (and have those automatically added to the attribute).
+
+Nodes
+After creating a StateGraph, you then add nodes with graph.add_node(name, value) syntax.
+The value parameter should be either a function or LCEL runnable that will be called
+This function/LCEL should accept a dictionary in the same form as the State object as input, and output a dictionary with keys of the State object to update.
+
+END
+There is also a special END node that is used to represent the end of the graph. It is important that your cycles be able to end eventually!
+
+Edges
+The Starting Edge
+connects the start of the graph to a particular node. This will make it so that that node is the first one called when input is passed to the graph
+
+Normal Edges
+edges where one node should ALWAYS be called after another
+An example of this may be in the basic agent runtime, where we always want the model to be called after we call a tool.
+graph.add_edge("tools", "model")
+
+Conditional Edges
+function (often powered by an LLM) is used to determine which node to go to first
+The upstream node: the output of this node will be looked at to determine what to do next
+A function: this will be called to determine which node to call next. It should return a string
+A mapping: this mapping will be used to map the output of the function in (2) to another node. The keys should be possible values that the function in (2) could return. The values should be names of nodes to go to if that value is returned.
+An example of this could be that after a model is called we either exit the graph and return to the user, or we call a tool - depending on what a user decides! See an example in pseudocode below:
+graph.add_conditional_edge(
+    "model",
+    should_continue,
+    {
+        "end": END,
+        "continue": "tools"
+    }
+)
+Compile
